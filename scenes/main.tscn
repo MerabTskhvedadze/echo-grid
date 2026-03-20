@@ -64,14 +64,18 @@ layout_mode = 2
 
 [node name="PressureLabel" type="Label" parent="." unique_id=1308196065]
 layout_mode = 0
-offset_right = 40.0
-offset_bottom = 23.0
+offset_left = 213.0
+offset_top = 1.0
+offset_right = 314.0
+offset_bottom = 24.0
 text = "Pressure: 0/3"
 
 [node name="LocksLabel" type="Label" parent="." unique_id=1590120729]
 layout_mode = 0
-offset_right = 40.0
-offset_bottom = 23.0
+offset_left = 122.0
+offset_top = 1.0
+offset_right = 199.0
+offset_bottom = 24.0
 text = "Locks: 0/8"
 
 [node name="StatusLabel" type="Label" parent="." unique_id=1981172865]
