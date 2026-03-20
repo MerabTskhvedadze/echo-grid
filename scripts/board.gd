@@ -1,11 +1,17 @@
 extends Control
 
 signal score_changed(new_score)
+signal pressure_changed(current_pressure, max_pressure)
+signal locks_changed(current_locks, max_locks)
+signal game_over(final_score)
 
 const GRID_SIZE = 5
 const TILE_SIZE = 100
 const GAP = 8
 const SWIPE_THRESHOLD = 30
+
+const PRESSURE_LIMIT = 3
+const MAX_LOCKS = 8
 
 var colors = [
 	Color("ff5a5f"),
@@ -20,6 +26,8 @@ var swipe_start = Vector2.ZERO
 var dragging = false
 var score = 0
 var busy = false
+var pressure = 0
+var dead = false
 
 func _ready():
 	randomize()
@@ -29,14 +37,20 @@ func _ready():
 func start_game():
 	busy = false
 	dragging = false
+	dead = false
 	score = 0
+	pressure = 0
+
 	score_changed.emit(score)
+	pressure_changed.emit(pressure, PRESSURE_LIMIT)
+	locks_changed.emit(0, MAX_LOCKS)
+
 	make_board()
 	remove_matches_on_start()
 
 func make_board():
 	for child in get_children():
-		child.queue_free()
+		child.free()
 
 	grid.clear()
 
@@ -61,20 +75,37 @@ func make_board():
 func create_tile(color_id):
 	var tile = ColorRect.new()
 	tile.size = Vector2(TILE_SIZE, TILE_SIZE)
-	tile.color = colors[color_id]
 	tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tile.set_meta("color_id", color_id)
+	tile.set_meta("locked", false)
+	apply_tile_look(tile)
 	return tile
 
 func set_tile_color(tile, color_id):
 	tile.set_meta("color_id", color_id)
-	tile.color = colors[color_id]
+	apply_tile_look(tile)
 
 func get_tile_color(tile):
-	return tile.get_meta("color_id")
+	return int(tile.get_meta("color_id"))
+
+func set_tile_locked(tile, value):
+	tile.set_meta("locked", value)
+	apply_tile_look(tile)
+
+func get_tile_locked(tile):
+	return bool(tile.get_meta("locked"))
+
+func apply_tile_look(tile):
+	var color_id = get_tile_color(tile)
+	tile.color = colors[color_id]
+
+	if get_tile_locked(tile):
+		tile.modulate = Color(0.45, 0.45, 0.45, 1.0)
+	else:
+		tile.modulate = Color(1, 1, 1, 1)
 
 func _gui_input(event):
-	if busy:
+	if busy or dead:
 		return
 
 	if event is InputEventScreenTouch:
@@ -120,7 +151,9 @@ func handle_swipe(start_pos, end_pos):
 			shift_column_up(col)
 
 	await animate_board_move()
-	await clear_all_matches()
+
+	var result = await clear_all_matches()
+	apply_pressure_and_locks(result)
 
 	busy = false
 
@@ -162,64 +195,78 @@ func animate_board_move():
 
 	await tween.finished
 
+func add_run_matches(matched, run):
+	if run.size() >= 3:
+		for pos in run:
+			matched[str(pos.x) + "_" + str(pos.y)] = pos
+
 func find_matches():
 	var matched = {}
 
 	# Rows
 	for row in range(GRID_SIZE):
-		var run_color = get_tile_color(grid[row][0])
-		var run_start = 0
-		var run_length = 1
+		var run = []
+		var run_color = -1
 
-		for col in range(1, GRID_SIZE):
-			var color_id = get_tile_color(grid[row][col])
+		for col in range(GRID_SIZE):
+			var tile = grid[row][col]
 
-			if color_id == run_color:
-				run_length += 1
-			else:
-				if run_length >= 3:
-					for i in range(run_start, run_start + run_length):
-						matched[str(row) + "_" + str(i)] = Vector2i(row, i)
+			if get_tile_locked(tile):
+				add_run_matches(matched, run)
+				run = []
+				run_color = -1
+				continue
 
+			var color_id = get_tile_color(tile)
+
+			if run.size() == 0 or color_id == run_color:
+				run.append(Vector2i(row, col))
 				run_color = color_id
-				run_start = col
-				run_length = 1
+			else:
+				add_run_matches(matched, run)
+				run = [Vector2i(row, col)]
+				run_color = color_id
 
-		if run_length >= 3:
-			for i in range(run_start, run_start + run_length):
-				matched[str(row) + "_" + str(i)] = Vector2i(row, i)
+		add_run_matches(matched, run)
 
 	# Columns
 	for col in range(GRID_SIZE):
-		var run_color = get_tile_color(grid[0][col])
-		var run_start = 0
-		var run_length = 1
+		var run = []
+		var run_color = -1
 
-		for row in range(1, GRID_SIZE):
-			var color_id = get_tile_color(grid[row][col])
+		for row in range(GRID_SIZE):
+			var tile = grid[row][col]
 
-			if color_id == run_color:
-				run_length += 1
-			else:
-				if run_length >= 3:
-					for i in range(run_start, run_start + run_length):
-						matched[str(i) + "_" + str(col)] = Vector2i(i, col)
+			if get_tile_locked(tile):
+				add_run_matches(matched, run)
+				run = []
+				run_color = -1
+				continue
 
+			var color_id = get_tile_color(tile)
+
+			if run.size() == 0 or color_id == run_color:
+				run.append(Vector2i(row, col))
 				run_color = color_id
-				run_start = row
-				run_length = 1
+			else:
+				add_run_matches(matched, run)
+				run = [Vector2i(row, col)]
+				run_color = color_id
 
-		if run_length >= 3:
-			for i in range(run_start, run_start + run_length):
-				matched[str(i) + "_" + str(col)] = Vector2i(i, col)
+		add_run_matches(matched, run)
 
 	return matched.values()
 
 func clear_all_matches():
 	var matches = find_matches()
+	var total_cleared = 0
+	var chain_count = 0
 
 	while matches.size() > 0:
-		score += matches.size() * 10
+		chain_count += 1
+		total_cleared += matches.size()
+
+		score += matches.size() * 10 * chain_count
 		score_changed.emit(score)
 
 		await animate_match_pop(matches)
@@ -233,6 +280,12 @@ func clear_all_matches():
 		await animate_match_reappear(matches)
 
 		matches = find_matches()
+
+	return {
+		"had_match": chain_count > 0,
+		"total_cleared": total_cleared,
+		"chain_count": chain_count
+	}
 
 func animate_match_pop(matches):
 	var tween = create_tween()
@@ -261,6 +314,68 @@ func animate_match_reappear(matches):
 		tween.parallel().tween_property(tile, "scale", Vector2(1, 1), 0.10)
 
 	await tween.finished
+
+func apply_pressure_and_locks(result):
+	pressure += 1
+
+	if result["had_match"]:
+		pressure = max(0, pressure - 1)
+
+	if result["chain_count"] >= 2 or result["total_cleared"] >= 4:
+		unlock_random_tile()
+
+	while pressure >= PRESSURE_LIMIT:
+		pressure -= PRESSURE_LIMIT
+		add_random_lock()
+
+	pressure_changed.emit(pressure, PRESSURE_LIMIT)
+
+	var lock_count = count_locked_tiles()
+	locks_changed.emit(lock_count, MAX_LOCKS)
+
+	if lock_count >= MAX_LOCKS:
+		dead = true
+		game_over.emit(score)
+
+func add_random_lock():
+	var choices = []
+
+	for row in range(GRID_SIZE):
+		for col in range(GRID_SIZE):
+			var tile = grid[row][col]
+			if not get_tile_locked(tile):
+				choices.append(tile)
+
+	if choices.size() == 0:
+		return
+
+	var tile = choices[randi() % choices.size()]
+	set_tile_locked(tile, true)
+
+func unlock_random_tile():
+	var choices = []
+
+	for row in range(GRID_SIZE):
+		for col in range(GRID_SIZE):
+			var tile = grid[row][col]
+			if get_tile_locked(tile):
+				choices.append(tile)
+
+	if choices.size() == 0:
+		return
+
+	var tile = choices[randi() % choices.size()]
+	set_tile_locked(tile, false)
+
+func count_locked_tiles():
+	var total = 0
+
+	for row in range(GRID_SIZE):
+		for col in range(GRID_SIZE):
+			if get_tile_locked(grid[row][col]):
+				total += 1
+
+	return total
 
 func remove_matches_on_start():
 	var matches = find_matches()
