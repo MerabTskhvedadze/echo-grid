@@ -33,8 +33,8 @@ func _ready():
 func on_score_changed(new_score):
 	score_label.text = "Score: " + str(new_score)
 
-	if new_score > SaveData.best_score:
-		SaveData.save_best_score(new_score)
+	if new_score > Savedata.best_score:
+		Savedata.save_best_score(new_score)
 		refresh_best_label()
 
 func on_pressure_changed(current_pressure, max_pressure):
