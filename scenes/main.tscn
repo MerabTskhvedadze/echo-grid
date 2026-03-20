@@ -78,3 +78,37 @@ text = "Locks: 0/8"
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 23.0
+
+[node name="GameOverPanel" type="Panel" parent="." unique_id=835063011]
+visible = false
+custom_minimum_size = Vector2(420, 260)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 20.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="FinalScoreLabel" type="Label" parent="GameOverPanel" unique_id=1681245422]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+text = "Score: 0"
+
+[node name="BestScoreLabel" type="Label" parent="GameOverPanel" unique_id=1810314859]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+text = "Best: 0"
+
+[node name="RestartBigButton" type="Button" parent="GameOverPanel" unique_id=908061466]
+layout_mode = 0
+offset_right = 8.0
+offset_bottom = 8.0
+text = "Play Again"
