@@ -19,6 +19,7 @@ var grid = []
 var swipe_start = Vector2.ZERO
 var dragging = false
 var score = 0
+var busy = false
 
 func _ready():
 	randomize()
@@ -26,6 +27,8 @@ func _ready():
 	start_game()
 
 func start_game():
+	busy = false
+	dragging = false
 	score = 0
 	score_changed.emit(score)
 	make_board()
@@ -71,6 +74,9 @@ func get_tile_color(tile):
 	return tile.get_meta("color_id")
 
 func _gui_input(event):
+	if busy:
+		return
+
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			swipe_start = event.position
@@ -96,6 +102,8 @@ func handle_swipe(start_pos, end_pos):
 	if delta.length() < SWIPE_THRESHOLD:
 		return
 
+	busy = true
+
 	var cell_size = TILE_SIZE + GAP
 	var row = clampi(int(start_pos.y / cell_size), 0, GRID_SIZE - 1)
 	var col = clampi(int(start_pos.x / cell_size), 0, GRID_SIZE - 1)
@@ -111,8 +119,10 @@ func handle_swipe(start_pos, end_pos):
 		else:
 			shift_column_up(col)
 
-	update_tile_positions()
-	clear_all_matches()
+	await animate_board_move()
+	await clear_all_matches()
+
+	busy = false
 
 func shift_row_left(row):
 	var first = grid[row][0]
@@ -138,14 +148,19 @@ func shift_column_down(col):
 		grid[row][col] = grid[row - 1][col]
 	grid[0][col] = last
 
-func update_tile_positions():
+func animate_board_move():
+	var tween = create_tween()
+
 	for row in range(GRID_SIZE):
 		for col in range(GRID_SIZE):
 			var tile = grid[row][col]
-			tile.position = Vector2(
+			var target_pos = Vector2(
 				col * (TILE_SIZE + GAP),
 				row * (TILE_SIZE + GAP)
 			)
+			tween.parallel().tween_property(tile, "position", target_pos, 0.12)
+
+	await tween.finished
 
 func find_matches():
 	var matched = {}
@@ -207,13 +222,45 @@ func clear_all_matches():
 		score += matches.size() * 10
 		score_changed.emit(score)
 
+		await animate_match_pop(matches)
+
 		for pos in matches:
 			var row = pos.x
 			var col = pos.y
 			var new_color_id = randi() % colors.size()
 			set_tile_color(grid[row][col], new_color_id)
 
+		await animate_match_reappear(matches)
+
 		matches = find_matches()
+
+func animate_match_pop(matches):
+	var tween = create_tween()
+
+	for pos in matches:
+		var row = pos.x
+		var col = pos.y
+		var tile = grid[row][col]
+		tween.parallel().tween_property(tile, "scale", Vector2(0.2, 0.2), 0.08)
+
+	await tween.finished
+
+func animate_match_reappear(matches):
+	for pos in matches:
+		var row = pos.x
+		var col = pos.y
+		var tile = grid[row][col]
+		tile.scale = Vector2(0.2, 0.2)
+
+	var tween = create_tween()
+
+	for pos in matches:
+		var row = pos.x
+		var col = pos.y
+		var tile = grid[row][col]
+		tween.parallel().tween_property(tile, "scale", Vector2(1, 1), 0.10)
+
+	await tween.finished
 
 func remove_matches_on_start():
 	var matches = find_matches()
