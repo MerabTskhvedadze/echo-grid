@@ -73,11 +73,14 @@ func make_board():
 			grid[row].append(tile)
 
 func create_tile(color_id):
-	var tile = ColorRect.new()
+	var tile = Panel.new()
 	tile.size = Vector2(TILE_SIZE, TILE_SIZE)
 	tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.pivot_offset = Vector2(TILE_SIZE / 2.0, TILE_SIZE / 2.0)
+
 	tile.set_meta("color_id", color_id)
 	tile.set_meta("locked", false)
+
 	apply_tile_look(tile)
 	return tile
 
@@ -97,12 +100,31 @@ func get_tile_locked(tile):
 
 func apply_tile_look(tile):
 	var color_id = get_tile_color(tile)
-	tile.color = colors[color_id]
+	var locked = get_tile_locked(tile)
 
-	if get_tile_locked(tile):
-		tile.modulate = Color(0.45, 0.45, 0.45, 1.0)
-	else:
-		tile.modulate = Color(1, 1, 1, 1)
+	var base_color = colors[color_id]
+	if locked:
+		base_color = base_color.darkened(0.45)
+
+	var style = StyleBoxFlat.new()
+	style.bg_color = base_color
+
+	style.corner_radius_top_left = 18
+	style.corner_radius_top_right = 18
+	style.corner_radius_bottom_left = 18
+	style.corner_radius_bottom_right = 18
+
+	style.shadow_color = Color(0, 0, 0, 0.22)
+	style.shadow_size = 6
+	style.shadow_offset = Vector2(0, 2)
+
+	style.border_color = base_color.lightened(0.12)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+
+	tile.add_theme_stylebox_override("panel", style)
 
 func _gui_input(event):
 	if busy or dead:
